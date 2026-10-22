@@ -1,0 +1,22 @@
+:root {
+  color-scheme: light;
+  --color-primary: #c2410c;
+  --color-brand: #e4572e;
+  --color-ink: #252b29;
+  --color-muted: #64716b;
+  --color-surface: #fff;
+  --color-background: #f5f7f5;
+  --color-border: #d6ddd7;
+  --color-danger: #b42318;
+  --color-success: #23704d;
+  --color-panel: #243e35;
+  --color-panel-soft: #dce9df;
+  --font-body: system-ui, -apple-system, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;
+  --font-mono: ui-monospace, 'SFMono-Regular', Consolas, monospace;
+  --radius-control: 10px;
+  --radius-panel: 20px;
+  --space-section: 32px;
+  --page-max: 1200px;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}

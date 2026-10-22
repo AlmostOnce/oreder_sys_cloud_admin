@@ -1,23 +1,51 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import HomeView from '../views/HomeView.vue'
+import { ADMIN_ROLE_CODES } from '../auth/policy.ts'
+import { useAuthStore } from '../stores/auth.ts'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
+    { path: '/login', name: 'login', component: () => import('../views/LoginView.vue') },
     {
       path: '/',
       name: 'home',
-      component: HomeView,
+      component: () => import('../views/HomeView.vue'),
+      meta: { requiresAuth: true, allowedRoles: ADMIN_ROLE_CODES },
     },
     {
-      path: '/about',
-      name: 'about',
-      // route level code-splitting
-      // this generates a separate chunk (About.[hash].js) for this route
-      // which is lazy-loaded when the route is visited.
-      component: () => import('../views/AboutView.vue'),
+      path: '/forbidden',
+      name: 'forbidden',
+      component: () => import('../views/ForbiddenView.vue'),
+    },
+    {
+      path: '/:pathMatch(.*)*',
+      name: 'not-found',
+      component: () => import('../views/NotFoundView.vue'),
     },
   ],
+})
+
+// 路由守卫负责页面导航；每个数据接口仍由服务端执行最终权限校验。
+router.beforeEach(async (to) => {
+  const auth = useAuthStore()
+  await auth.initialize()
+
+  if (to.name === 'login') {
+    if (auth.isAuthenticated) return { name: 'home', replace: true }
+    return true
+  }
+
+  if (!to.meta.requiresAuth) return true
+  if (!auth.isAuthenticated) {
+    return { name: 'login', query: { redirect: to.fullPath }, replace: true }
+  }
+
+  const allowedRoles = to.meta.allowedRoles as readonly string[] | undefined
+  if (allowedRoles && !allowedRoles.includes(auth.profile?.roleCode ?? '')) {
+    return { name: 'forbidden', replace: true }
+  }
+
+  return true
 })
 
 export default router
