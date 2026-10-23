@@ -11,7 +11,7 @@ export class ApiClient {
     private readonly fetcher: FetchLike = globalThis.fetch.bind(globalThis),
   ) {}
 
-  /** 请求 JSON 接口；Bearer 令牌只通过 Authorization 请求头发送。 */
+  /** 请求 JSON 或 multipart 接口；Bearer 令牌只通过 Authorization 请求头发送。 */
   async request<T>(
     path: string,
     options: {
@@ -23,7 +23,10 @@ export class ApiClient {
   ): Promise<T> {
     const headers = new Headers({ Accept: 'application/json' })
 
-    if (options.body !== undefined) headers.set('Content-Type', 'application/json')
+    const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData
+    if (options.body !== undefined && !isFormData) {
+      headers.set('Content-Type', 'application/json')
+    }
     if (options.accessToken) headers.set('Authorization', `Bearer ${options.accessToken}`)
 
     let response: Response
@@ -31,7 +34,12 @@ export class ApiClient {
       response = await this.fetcher(`${this.baseUrl}${path}`, {
         method: options.method ?? 'GET',
         headers,
-        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+        body:
+          options.body === undefined
+            ? undefined
+            : isFormData
+              ? (options.body as FormData)
+              : JSON.stringify(options.body),
         signal: options.signal,
         cache: 'no-store',
       })

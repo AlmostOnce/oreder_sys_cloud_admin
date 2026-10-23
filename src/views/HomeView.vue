@@ -1,75 +1,92 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { RouterLink, useRouter } from 'vue-router'
+import { RouterLink } from 'vue-router'
+import { CATALOG_ALLOWED_ROLES, navigationForRole, roleCanAccess } from '../admin/permissions.ts'
 import { roleLabel } from '../auth/policy.ts'
 import { useAuthStore } from '../stores/auth.ts'
 
 const auth = useAuthStore()
-const router = useRouter()
-const nameInitial = computed(() => auth.profile?.username.trim().charAt(0).toUpperCase() || '管')
 const roleName = computed(() => roleLabel(auth.profile?.roleCode ?? ''))
-
-/** 注销操作必须得到后端确认；失败时保留当前会话。 */
-async function logout(): Promise<void> {
-  try {
-    await auth.signOut()
-    await router.replace({ name: 'login' })
-  } catch {
-    // 页面通过 Pinia 的错误状态呈现失败原因，用户可再次尝试。
-  }
-}
+const navigation = computed(() => navigationForRole(auth.profile?.roleCode))
+const canOpenCatalog = computed(() => roleCanAccess(auth.profile?.roleCode, CATALOG_ALLOWED_ROLES))
 </script>
 
 <template>
-  <main class="workspace-page">
-    <header class="workspace-header">
-      <RouterLink class="workspace-brand" to="/" aria-label="食堂运营平台工作台">
-        <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
-        <span>食堂运营平台<small>管理工作台</small></span>
-      </RouterLink>
-      <div class="workspace-user">
-        <span class="user-avatar" aria-hidden="true">{{ nameInitial }}</span>
-        <span class="user-name"
-          >{{ auth.profile?.username }}<small>{{ roleName }}</small></span
-        >
-        <button class="logout-button" type="button" :disabled="auth.busy" @click="logout">
-          {{ auth.busy ? '正在退出…' : '退出登录' }}
-        </button>
+  <main class="ops-page ops-home" aria-labelledby="page-title">
+    <section class="ops-page-heading ops-home__heading">
+      <div>
+        <p class="ops-kicker">CAMPUS DINING · OPERATIONS</p>
+        <h1 id="page-title">你好，{{ auth.profile?.username }}</h1>
+        <p class="ops-page-lead">以下是当前账号可访问的管理功能。</p>
       </div>
-    </header>
-
-    <section class="workspace-content" aria-labelledby="workspace-title">
-      <p class="eyebrow">CAMPUS DINING OPERATIONS</p>
-      <h1 id="workspace-title">你好，{{ auth.profile?.username }}</h1>
-      <p class="workspace-lead">身份已通过服务端确认，可访问的业务能力将按角色逐步开放。</p>
-
-      <div class="identity-card">
-        <div class="identity-mark" aria-hidden="true">
-          <span class="brand-mark"><span></span><span></span><span></span></span>
-        </div>
-        <div>
-          <p class="identity-label">当前登录身份</p>
-          <h2>{{ roleName }}</h2>
-          <p class="identity-account">{{ auth.profile?.username }}</p>
-        </div>
-        <span class="identity-status"><i></i>已验证</span>
-      </div>
-
-      <p v-if="auth.errorMessage" class="form-alert workspace-alert" role="alert">
-        {{ auth.errorMessage }}
-      </p>
-
-      <div class="workspace-note">
-        <span class="note-line" aria-hidden="true"></span>
-        <div>
-          <h2>工作台已准备就绪</h2>
-          <p>
-            商品、订单与人员管理功能将按项目开发计划逐步接入。当前账号可访问的具体数据范围由服务端权限校验。
-          </p>
-        </div>
+      <div class="ops-identity-chip">
+        <span class="ops-identity-chip__dot" aria-hidden="true"></span>
+        <span>{{ roleName }}</span>
       </div>
     </section>
 
-    <footer class="workspace-footer">校园点餐管理平台 <span>·</span> 安全运营入口</footer>
+    <section class="ops-home__section" aria-labelledby="available-tools-title">
+      <div class="ops-section-heading">
+        <div>
+          <p class="ops-kicker">可用工作区</p>
+          <h2 id="available-tools-title">从这里继续处理日常运营</h2>
+        </div>
+        <span class="ops-section-heading__count"
+          >{{ navigation.length + (canOpenCatalog ? 1 : 0) }} 项</span
+        >
+      </div>
+
+      <div v-if="navigation.length || canOpenCatalog" class="ops-feature-grid">
+        <RouterLink
+          v-for="item in navigation"
+          :key="item.name"
+          class="ops-feature-card"
+          :to="{ name: item.name }"
+        >
+          <span class="ops-feature-card__eyebrow">管理模块</span>
+          <span class="ops-feature-card__title">{{ item.label }}</span>
+          <span class="ops-feature-card__description">{{ item.description }}</span>
+          <span class="ops-feature-card__action">打开模块 <span aria-hidden="true">→</span></span>
+        </RouterLink>
+        <RouterLink
+          v-if="canOpenCatalog"
+          class="ops-feature-card ops-feature-card--catalog"
+          :to="{ name: 'windows' }"
+        >
+          <span class="ops-feature-card__eyebrow">商品维护</span>
+          <span class="ops-feature-card__title">分类与菜品</span>
+          <span class="ops-feature-card__description">从档口进入菜单，维护分类、菜品和图片。</span>
+          <span class="ops-feature-card__action">先选择档口 <span aria-hidden="true">→</span></span>
+        </RouterLink>
+      </div>
+
+      <div v-else class="ops-panel ops-empty-capability" role="status">
+        <span class="ops-state-rule" aria-hidden="true"></span>
+        <h3>当前角色暂无可用的业务管理入口</h3>
+        <p>可用功能由后端角色和数据范围决定；如果你认为这是配置问题，请联系系统管理员。</p>
+      </div>
+    </section>
+
+    <section
+      v-if="auth.profile?.roleCode === 'SYSTEM_ADMIN'"
+      class="ops-honest-gap"
+      aria-labelledby="gap-title"
+    >
+      <div class="ops-honest-gap__mark" aria-hidden="true">i</div>
+      <div>
+        <p class="ops-kicker">能力边界</p>
+        <h2 id="gap-title">账号管理尚不可用</h2>
+        <p>
+          后端目前没有管理端用户列表或检索接口。为避免手填用户编号造成误操作，这里暂不提供改角色或停用账号的入口。
+        </p>
+      </div>
+    </section>
+
+    <section class="ops-home__footnote" aria-label="数据安全说明">
+      <span class="ops-home__footnote-rule" aria-hidden="true"></span>
+      <p>
+        页面入口只用于导航。每条餐厅、档口和菜单数据的可见范围及操作权限，仍由对应业务服务实时校验。
+      </p>
+    </section>
   </main>
 </template>

@@ -1,6 +1,5 @@
 import type {
   AdminProfile,
-  ApiEnvelope,
   Captcha,
   LoginCredentials,
   SessionStorage,

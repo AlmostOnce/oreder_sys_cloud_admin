@@ -20,3 +20,28 @@
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
+
+/* 运营工作区采用独立色彩体系；登录页仍只读取上方 --color-*。 */
+.operations-theme {
+  --ops-nav: #142b35;
+  --ops-nav-raised: #1d3a45;
+  --ops-primary: #087a78;
+  --ops-primary-hover: #066866;
+  --ops-accent: #d3a447;
+  --ops-background: #eef3f1;
+  --ops-surface: #fcfdfc;
+  --ops-border: #d5dfdc;
+  --ops-ink: #203239;
+  --ops-muted: #64777a;
+  --ops-danger: #aa4039;
+  --ops-danger-soft: #fbefed;
+  --ops-success: #2c7358;
+  --ops-success-soft: #eaf4ee;
+  --ops-info-soft: #edf3f4;
+  --ops-radius-control: 9px;
+  --ops-radius-panel: 14px;
+  --ops-shadow-panel: 0 14px 36px rgb(20 43 53 / 5%);
+  min-height: 100vh;
+  color: var(--ops-ink);
+  background: var(--ops-background);
+}
