@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '../auth/errors.ts'
 import type { Captcha } from '../auth/contracts.ts'
@@ -9,7 +9,7 @@ import { useAuthStore } from '../stores/auth.ts'
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
-const username = ref('')
+const account = ref('')
 const password = ref('')
 const captchaCode = ref('')
 const captcha = ref<Captcha | null>(null)
@@ -17,37 +17,72 @@ const captchaLoading = ref(false)
 const showPassword = ref(false)
 const formError = ref('')
 const captchaError = ref('')
+const accountError = ref('')
+const passwordError = ref('')
+const captchaCodeError = ref('')
+const accountInput = ref<HTMLInputElement | null>(null)
+const passwordInput = ref<HTMLInputElement | null>(null)
+const captchaInput = ref<HTMLInputElement | null>(null)
+let captchaRequest: AbortController | null = null
 const captchaImage = computed(() => captcha.value?.imageBase64 ?? '')
 
 onMounted(() => {
   void loadCaptcha()
 })
 
+onUnmounted(() => {
+  // 离开登录页后取消验证码请求，防止过期响应继续更新已经卸载的表单。
+  captchaRequest?.abort()
+})
+
 /** 获取一次性图片验证码；失败时保留可操作的重试入口。 */
 async function loadCaptcha(): Promise<void> {
+  captchaRequest?.abort()
+  const request = new AbortController()
+  captchaRequest = request
   captchaLoading.value = true
   captchaError.value = ''
+  // 旧验证码不可继续提交，加载失败时也不能留下旧图片和旧标识。
+  captcha.value = null
+  captchaCode.value = ''
+  captchaCodeError.value = ''
   try {
-    captcha.value = await authSession.fetchCaptcha()
-    captchaCode.value = ''
+    const nextCaptcha = await authSession.fetchCaptcha(request.signal)
+    if (!request.signal.aborted) captcha.value = nextCaptcha
   } catch (error) {
+    if (request.signal.aborted) return
     captchaError.value = error instanceof Error ? error.message : '验证码暂时无法加载。'
   } finally {
-    captchaLoading.value = false
+    if (captchaRequest === request) captchaLoading.value = false
   }
 }
 
 /** 先完成字段校验，再通过认证状态统一入口提交。 */
 async function submitLogin(): Promise<void> {
+  // 同一表单只允许一个登录请求，避免一次性验证码被连续消费。
+  if (auth.busy || captchaLoading.value) return
   formError.value = ''
-  captchaError.value = ''
+  accountError.value = ''
+  passwordError.value = ''
+  captchaCodeError.value = ''
 
-  if (!username.value.trim()) {
-    formError.value = '请输入用户名。'
+  const normalizedAccount = account.value.trim().toLowerCase()
+  if (!normalizedAccount) {
+    accountError.value = '请输入用户号或邮箱。'
+    accountInput.value?.focus()
+    return
+  }
+  if (
+    !/^\d{10}$/.test(normalizedAccount) &&
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedAccount)
+  ) {
+    accountError.value = '请输入十位用户号或有效邮箱，昵称不能用于登录。'
+    accountInput.value?.focus()
     return
   }
   if (!password.value) {
-    formError.value = '请输入密码。'
+    passwordError.value = '请输入密码。'
+    passwordInput.value?.focus()
     return
   }
   if (!captcha.value) {
@@ -55,13 +90,14 @@ async function submitLogin(): Promise<void> {
     return
   }
   if (!captchaCode.value.trim()) {
-    formError.value = '请输入图片中的验证码。'
+    captchaCodeError.value = '请输入图片中的验证码。'
+    captchaInput.value?.focus()
     return
   }
 
   try {
     await auth.signIn({
-      username: username.value.trim(),
+      account: normalizedAccount,
       password: password.value,
       captchaId: captcha.value.captchaId,
       captchaCode: captchaCode.value.trim(),
@@ -70,6 +106,9 @@ async function submitLogin(): Promise<void> {
     await router.replace(safeRedirect(route.query.redirect))
   } catch (error) {
     formError.value = messageFor(error)
+    // 失败后保留账号便于纠正输入，但不保留密码；下一次必须重新填写验证码。
+    password.value = ''
+    showPassword.value = false
     // 后端每次登录尝试都会消费验证码，失败后必须重新获取。
     await loadCaptcha()
   }
@@ -90,7 +129,7 @@ function safeRedirect(value: unknown): string {
 
 /** 将认证、限流和网络错误转换成表单内的中文恢复提示。 */
 function messageFor(error: unknown): string {
-  if (error instanceof ApiError && error.status === 401) return '用户名或密码不正确，请重新输入。'
+  if (error instanceof ApiError && error.status === 401) return '账号或密码不正确，请重新输入。'
   if (error instanceof ApiError && error.status === 429) return '尝试次数过多，请稍后再试。'
   return error instanceof Error ? error.message : '登录失败，请稍后重试。'
 }
@@ -147,24 +186,44 @@ function messageFor(error: unknown): string {
           <p>使用你的运营账号继续</p>
         </div>
 
-        <form class="login-form" novalidate @submit.prevent="submitLogin">
+        <form
+          class="login-form"
+          novalidate
+          @submit.prevent="submitLogin"
+          @keydown.enter="
+            (event) => {
+              if (event.isComposing) event.preventDefault()
+            }
+          "
+        >
           <div class="field-group">
-            <label for="username">用户名</label>
+            <label for="account">用户号或邮箱</label>
             <div class="input-wrap">
               <span class="field-icon user-icon" aria-hidden="true"></span>
               <input
-                id="username"
-                v-model="username"
-                name="username"
+                id="account"
+                ref="accountInput"
+                v-model="account"
+                name="account"
                 type="text"
                 autocomplete="username"
-                maxlength="64"
-                placeholder="请输入用户名"
+                autocapitalize="none"
+                :spellcheck="false"
+                maxlength="254"
+                placeholder="请输入十位用户号或邮箱"
                 :disabled="auth.busy"
-                aria-describedby="username-hint"
+                :aria-invalid="!!accountError"
+                aria-describedby="account-hint"
+                @input="accountError = ''"
               />
             </div>
-            <span id="username-hint" class="field-hint">请使用管理员或运营人员账号</span>
+            <span
+              id="account-hint"
+              class="field-hint"
+              :class="{ 'error-text': accountError }"
+              aria-live="polite"
+              >{{ accountError || '使用十位用户号或邮箱登录，昵称仅用于展示' }}</span
+            >
           </div>
 
           <div class="field-group">
@@ -173,6 +232,7 @@ function messageFor(error: unknown): string {
               <span class="field-icon lock-icon" aria-hidden="true"></span>
               <input
                 id="password"
+                ref="passwordInput"
                 v-model="password"
                 name="password"
                 :type="showPassword ? 'text' : 'password'"
@@ -180,6 +240,9 @@ function messageFor(error: unknown): string {
                 maxlength="64"
                 placeholder="请输入密码"
                 :disabled="auth.busy"
+                :aria-invalid="!!passwordError"
+                aria-describedby="password-hint"
+                @input="passwordError = ''"
               />
               <button
                 class="visibility-button"
@@ -200,6 +263,13 @@ function messageFor(error: unknown): string {
                 </svg>
               </button>
             </div>
+            <span
+              v-if="passwordError"
+              id="password-hint"
+              class="field-hint error-text"
+              role="status"
+              >{{ passwordError }}</span
+            >
           </div>
 
           <div class="field-group captcha-group">
@@ -212,6 +282,7 @@ function messageFor(error: unknown): string {
                 <span class="field-icon captcha-icon" aria-hidden="true"></span>
                 <input
                   id="captcha"
+                  ref="captchaInput"
                   v-model="captchaCode"
                   name="captcha"
                   type="text"
@@ -220,6 +291,9 @@ function messageFor(error: unknown): string {
                   maxlength="8"
                   placeholder="输入验证码"
                   :disabled="auth.busy"
+                  :aria-invalid="!!captchaCodeError"
+                  aria-describedby="captcha-hint"
+                  @input="captchaCodeError = ''"
                 />
               </div>
               <button
@@ -235,9 +309,13 @@ function messageFor(error: unknown): string {
                 }}</span>
               </button>
             </div>
-            <span v-if="captchaError" class="inline-hint error-text" role="status">{{
-              captchaError
-            }}</span>
+            <span
+              v-if="captchaError || captchaCodeError"
+              id="captcha-hint"
+              class="inline-hint error-text"
+              role="status"
+              >{{ captchaError || captchaCodeError }}</span
+            >
           </div>
 
           <p v-if="formError" class="form-alert" role="alert">
