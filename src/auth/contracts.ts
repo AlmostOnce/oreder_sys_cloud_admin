@@ -16,11 +16,14 @@ export interface TokenPair {
 
 /** 当前登录用户公开资料；角色取自经过网关认证的服务端响应。 */
 export interface AdminProfile {
+  /** 稳定的公开 UUID；不可转换为内部数字主键。 */
   userUuid: string
+  /** 服务端分配的十位用户号，按字符串保留可能存在的前导零。 */
+  userNo: string
+  /** 仅用于展示的昵称，不作为登录账号。 */
   username: string
   roleCode: string
   email: string | null
-  phone: string | null
   avatarUrl: string | null
   createdAt: string | null
 }
@@ -34,7 +37,8 @@ export interface Captcha {
 
 /** 登录表单提交到认证接口的字段。 */
 export interface LoginCredentials {
-  username: string
+  /** 十位用户号或邮箱；不再提交昵称 username。 */
+  account: string
   password: string
   captchaId: string
   captchaCode: string

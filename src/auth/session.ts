@@ -40,8 +40,8 @@ export class AuthSession {
   }
 
   /** 获取新的图片验证码；验证码接口允许匿名访问。 */
-  fetchCaptcha(): Promise<Captcha> {
-    return this.api.request<Captcha>('/auth/captcha')
+  fetchCaptcha(signal?: AbortSignal): Promise<Captcha> {
+    return this.api.request<Captcha>('/auth/captcha', { signal })
   }
 
   /** 使用账号、密码和一次性验证码建立管理端会话。 */
@@ -51,7 +51,13 @@ export class AuthSession {
 
     const tokens = await this.api.request<TokenPair>('/auth/login', {
       method: 'POST',
-      body: credentials,
+      // 显式构造新契约，避免误传已废弃的 username；密码保持原样，不进行裁剪。
+      body: {
+        account: credentials.account.trim().toLowerCase(),
+        password: credentials.password,
+        captchaId: credentials.captchaId,
+        captchaCode: credentials.captchaCode.trim(),
+      },
     })
     const nextSession = createStoredSession(tokens, this.now())
     this.session = nextSession
